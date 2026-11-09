@@ -1,18 +1,15 @@
 # Streamlit settings for the capstone dashboard
 
+# Port / address are NOT set here on purpose: run_app.ps1 passes them for this
+# PC (http://dbmonitor.localhost, port 80, loopback only), while hosting
+# services such as Streamlit Community Cloud use their own defaults.
+
 [server]
-address = "localhost"          # only reachable from this PC (loopback) - nothing exposed to the network
-port = 80                      # normal web port, so the link needs no ":8501"
 headless = true                # do not auto-open a browser tab
 runOnSave = false
 
 [browser]
 gatherUsageStats = false       # no usage telemetry sent to Streamlit
-# The address shown in the terminal. Edge / Chrome resolve every *.localhost name
-# to this PC by themselves, so http://dbmonitor.localhost works without DNS,
-# hosts-file or admin changes.
-serverAddress = "dbmonitor.localhost"
-serverPort = 80
 
 [client]
 toolbarMode = "minimal"

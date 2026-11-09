@@ -35,4 +35,9 @@ if (Get-NetTCPConnection -LocalPort 80 -State Listen -ErrorAction SilentlyContin
 }
 
 Write-Host 'Starting dashboard at http://dbmonitor.localhost  (Ctrl+C to stop)' -ForegroundColor Cyan
-& $python -m streamlit run app.py
+# Port 80 on the loopback address only (not reachable from other computers).
+# Edge / Chrome resolve every *.localhost name to this PC by themselves, so
+# http://dbmonitor.localhost works without DNS, hosts-file or admin changes.
+& $python -m streamlit run app.py `
+    --server.address localhost --server.port 80 `
+    --browser.serverAddress dbmonitor.localhost --browser.serverPort 80

@@ -115,7 +115,8 @@ Open **http://dbmonitor.localhost** in Edge or Chrome. Stop with **Ctrl+C**.
 The dashboard listens on port 80 of this PC only (loopback - not reachable from
 other computers). Edge and Chrome send every `*.localhost` name to this PC by
 themselves, so no DNS, hosts-file or admin change is needed. Port and address are
-set in `.streamlit/config.toml`. If port 80 is taken by another program,
+set in `run_app.ps1` (not in `.streamlit/config.toml`, so hosting services keep their
+own defaults). If port 80 is taken by another program,
 `run_app.ps1` says so; `http://127.0.0.1` also works.
 
 *Production note (future enhancement):* a shared link for other users would run
