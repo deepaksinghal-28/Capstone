@@ -1,0 +1,19 @@
+# Local settings (may differ per PC; never commit)
+.env
+
+# Python caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Virtual environments (the project venv lives outside this folder)
+.venv/
+venv/
+
+# Claude Code settings (machine-specific, not part of the project)
+.claude/
+
+# Editor / OS files
+.vscode/
+Thumbs.db
+desktop.ini

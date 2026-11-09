@@ -1,0 +1,14 @@
+# Database Server Monitoring and Performance Analysis System
+# Python packages used by the application.
+# Versions below are the ones actually installed and verified on 2026-11-09
+# with Python 3.13.17 on Windows 11.
+#
+# Install into the project virtual environment (PowerShell):
+#   & "$env:USERPROFILE\venvs\capstone\Scripts\python.exe" -m pip install -r requirements.txt
+
+streamlit==1.67.0      # web dashboard framework
+pyodbc==5.5.0          # SQL Server connectivity through the Microsoft ODBC driver
+pandas==3.1.1          # tabular data handling (query results -> DataFrames)
+plotly==7.1.0          # interactive charts
+python-dotenv==1.2.4   # reads connection settings from the .env file
+pytest==9.2.0          # automated tests
