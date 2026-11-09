@@ -5,6 +5,25 @@ Streamlit, pyodbc, pandas and Plotly**. Final-year college capstone project,
 inspired by the open-source [SQLMonitor](https://github.com/imajaydwivedi/SQLMonitor)
 project (MIT) - see [LICENSE_ATTRIBUTION.md](LICENSE_ATTRIBUTION.md).
 
+## 🔗 Live demo
+
+**[ql-server-monitor-demo.streamlit.app](https://ql-server-monitor-demo.streamlit.app/)** -
+the complete dashboard with **five fictional servers and clearly labelled SAMPLE data**
+(no real SQL Server is connected). It opens on `DEMO-PROD-01`; use the *Demo servers
+to try* buttons or the search box, then the five module pages in the left menu.
+
+*Hosted free on Streamlit Community Cloud - if it has been idle it may need ~30 s to wake up.*
+
+| | |
+|---|---|
+| ![Find a server](docs/screenshots/01-find-a-server.jpg) **Find a server** - search first, one server at a time | ![Server health](docs/screenshots/02-server-health.jpg) **1 · Server health** - databases, sizes, log usage |
+| ![Query performance](docs/screenshots/03-query-performance.jpg) **2 · Query performance** - top queries from the plan cache | ![Sessions and blocking](docs/screenshots/04-sessions-blocking.jpg) **3 · Sessions & blocking** - blocking chains to the head blocker |
+| ![Backups](docs/screenshots/05-backups.jpg) **4 · Backups** - last full/diff/log, overdue policy | ![Alerts](docs/screenshots/06-alerts.jpg) **5 · Alerts & advice** - rule-based alerts with DBA steps |
+
+*Screenshots taken from the public demo (sample data).*
+
+## Architecture
+
 ```
 SQL Server (DMVs, catalog views, msdb)
         │  read-only SELECTs, Windows Authentication
