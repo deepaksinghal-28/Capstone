@@ -35,6 +35,18 @@ with st.container(horizontal=True, vertical_alignment="bottom", gap="small"):
     st.button("Search", icon="🔎", type="primary", key="srv_search_go")
 st.caption("Type a name, then press **Enter** or click **Search**.")
 
+if ui.demo_mode():
+    # Demo only: quick-pick buttons so visitors can explore every sample server.
+    # (The real dashboard never lists servers - it is search-first.)
+    st.markdown("**Demo servers to try** - each one shows a different situation:")
+    hints = {"DEMO-PROD-01": "blocking chain", "DEMO-PROD-02": "log almost full",
+             "DEMO-UAT-01": "never backed up", "DEMO-REPORT-01": "offline DB · long query",
+             "DEMO-DEV-01": "unreachable"}
+    with st.container(horizontal=True, wrap=True, gap="small"):
+        for t in ui.targets():
+            st.button(f"{t.name} · {hints.get(t.name, '')}", key=f"demo_{t.name}",
+                      on_click=ui.select_server, args=(t.name,))
+
 
 def show_server_summary(t: ServerTarget) -> None:
     """Everything about ONE server - and nothing about any other."""

@@ -14,6 +14,7 @@ from __future__ import annotations
 import os
 import socket
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -199,6 +200,27 @@ def settings_for(settings: Settings, server: str) -> Settings:
     return replace(settings, server=server)
 
 
+@lru_cache(maxsize=8)
+def odbc_driver_available(driver: str) -> bool:
+    """Is this ODBC driver installed here? (False on hosts such as Streamlit
+    Community Cloud, where real SQL Server monitoring is impossible.)"""
+    try:
+        import pyodbc
+        return driver in pyodbc.drivers()
+    except Exception:
+        return False
+
+
+def _demo_mode(driver: str) -> bool:
+    """DEMO_MODE=true/false wins; if it is not set, demo mode switches on
+    automatically when the SQL Server ODBC driver is missing (e.g. a cloud host),
+    so a public deployment always shows the labelled sample data."""
+    explicit = os.getenv("DEMO_MODE", "").strip()
+    if explicit:
+        return explicit.lower() in {"1", "true", "yes", "y", "on"}
+    return not odbc_driver_available(driver)
+
+
 def get_settings() -> Settings:
     """Build Settings from environment variables / .env (see .env.example)."""
     defaults = Settings()
@@ -226,5 +248,5 @@ def get_settings() -> Settings:
         alert_history_days=_env_int("ALERT_HISTORY_DAYS", defaults.alert_history_days),
         alert_store_path=_env_str("ALERT_STORE_PATH", defaults.alert_store_path),
         servers=parse_servers(os.getenv("SQL_SERVERS", "")),
-        demo_mode=_env_bool("DEMO_MODE", defaults.demo_mode),
+        demo_mode=_demo_mode(_env_str("SQL_ODBC_DRIVER", defaults.driver)),
     )

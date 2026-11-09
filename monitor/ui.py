@@ -79,6 +79,8 @@ def current_target() -> ServerTarget | None:
     by_name = {t.name.lower(): t for t in all_targets}
     chosen = st.session_state.get(SELECTED_KEY) or st.query_params.get("server") or ""
     target = by_name.get(str(chosen).lower())
+    if target is None and get_settings().demo_mode:
+        target = all_targets[0]            # demo: open with a sample server, every page has data
     if target is not None and st.session_state.get(SELECTED_KEY) != target.name:
         st.session_state[SELECTED_KEY] = target.name   # remember a ?server= link
     return target
