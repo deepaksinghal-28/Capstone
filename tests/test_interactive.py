@@ -122,6 +122,18 @@ def test_blocking_tree_click_shows_session_details(demo):
     assert any("Session 72" in m.value and "head blocker" in m.value for m in at.markdown)
 
 
+def test_sessions_page_with_no_user_sessions(demo, monkeypatch):
+    """Regression: an idle server (zero user sessions) raised KeyError 'is_monitor'."""
+    from monitor.collectors import SESSION_DERIVED_COLUMNS, SessionsSnapshot, prepare_sessions
+    full = demo_data.sessions("DEMO-PROD-01").sessions
+    raw_empty = full.drop(columns=[c for c in SESSION_DERIVED_COLUMNS if c in full]).iloc[0:0]  # SQL columns, 0 rows
+    monkeypatch.setattr(demo_data, "sessions", lambda server, settings=None: SessionsSnapshot(
+        connected=True, collected_at_local=datetime.now(), sessions=prepare_sessions(raw_empty)))
+    at = _run("views/sessions_blocking.py")
+    assert any("No blocking detected" in s.value for s in at.success)
+    assert any("No sessions match" in i.value for i in at.info)
+
+
 def test_health_drill_down_by_database(demo):
     at = _run("views/health.py", server="DEMO-PROD-02")
     at.selectbox(key="health_db_pick").select("FinanceDB").run()

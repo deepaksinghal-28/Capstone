@@ -92,6 +92,17 @@ def test_no_blocking_gives_empty_chains():
     assert blocking_chains(prepare_sessions(raw, APP)).empty
 
 
+def test_no_user_sessions_still_has_every_column():
+    """An idle instance returns zero rows; the pages must still find their columns."""
+    df = prepare_sessions(_raw_sessions().iloc[0:0], APP)
+    assert df.empty
+    for col in ("is_monitor", "is_blocked", "is_head_blocker", "wait_seconds", "state", "state_label"):
+        assert col in df.columns
+    assert df[~df["is_monitor"] & df["wait_type"].notna()].empty     # the filter that crashed
+    assert summarize_sessions(df)["sessions"] == 0
+    assert blocking_chains(df).empty
+
+
 def test_recovery_guard_removes_dm_exec_requests():
     assert "sys.dm_exec_requests" in queries.sessions_query(include_requests=True)
     assert "sys.dm_exec_requests" not in queries.sessions_query(include_requests=False)

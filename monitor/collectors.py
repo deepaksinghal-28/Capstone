@@ -234,9 +234,22 @@ class SessionsSnapshot:
     error_detail: str | None = None
 
 
+SESSION_DERIVED_COLUMNS = {
+    "is_blocked": bool, "is_blocker": bool, "is_head_blocker": bool, "is_monitor": bool,
+    "wait_seconds": float, "elapsed_seconds": float, "short_sql": object, "state": object,
+    "state_label": object,
+}
+
+
 def prepare_sessions(df: pd.DataFrame, app_name: str = "") -> pd.DataFrame:
     """Add blocked / blocker / head-blocker flags and a readable state per session."""
     if df.empty:
+        # No user sessions (e.g. an idle instance): still return every column the
+        # pages use, so filters like df[~df["is_monitor"]] work on an empty table.
+        df = df.copy()
+        for col, dtype in SESSION_DERIVED_COLUMNS.items():
+            if col not in df.columns:
+                df[col] = pd.Series(dtype=dtype)
         return df
     df = df.drop_duplicates(subset="session_id").copy()
     for col in ("blocking_session_id", "wait_ms", "cpu_ms", "elapsed_ms", "logical_reads",
