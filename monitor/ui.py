@@ -152,6 +152,30 @@ def style_figure(fig: go.Figure, height: int, left_margin: int = 90) -> go.Figur
     return fig
 
 
+def style_altair(chart, height: int):
+    """Same recessive look as the Plotly charts, for clickable Altair charts."""
+    return (chart.properties(height=height, background="transparent")
+            .configure(font=FONT)
+            .configure_axis(labelColor=INK_2, titleColor=MUTED, gridColor=GRID, domainColor=AXIS,
+                            tickColor=AXIS, labelFontSize=12, titleFontSize=12, labelLimit=220)
+            .configure_axisY(grid=False)
+            .configure_legend(labelColor=INK_2, orient="top", title=None)
+            .configure_view(strokeWidth=0))
+
+
+def altair_pick(event, field: str, param: str = "pick"):
+    """Value of `field` for the clicked item of a selection_point named `param`."""
+    if not event:
+        return None
+    selection = getattr(event, "selection", None)
+    if selection is None and isinstance(event, dict):
+        selection = event.get("selection", {})
+    values = (selection or {}).get(param) or []
+    if isinstance(values, dict):
+        values = [values]
+    return values[0].get(field) if values else None
+
+
 def show_unavailable(error: str | None, detail: str | None, attempted_at,
                      target: ServerTarget | None = None) -> None:
     """Standard 'SQL Server is unavailable' state used by every page."""
@@ -211,6 +235,19 @@ def load_backups(server: str, demo: bool = False) -> BackupSnapshot:
         from monitor import demo_data
         return demo_data.backups(server)
     return collect_backups(settings_for(get_settings(), server))
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_cpu(server: str, demo: bool = False):
+    if demo:
+        from monitor import demo_data
+        return demo_data.cpu_history(server)
+    from monitor.collectors import collect_cpu_history
+    return collect_cpu_history(settings_for(get_settings(), server))
+
+
+def cpu_of(server: str):
+    return load_cpu(server, demo_mode())
 
 
 # The pages call these; the demo flag is part of the cache key, so real and
@@ -299,6 +336,8 @@ def render_sidebar_status() -> None:
             st.markdown(f"Server: **{html.escape(selected.name)}**", unsafe_allow_html=True)
             st.markdown(connection_pill(snap.connected, selected.server), unsafe_allow_html=True)
             active = active_alerts(selected.name)
+            if not active.empty and "is_snoozed" in active:
+                active = active[~active["is_snoozed"]]          # snoozed alerts don't nag
             critical = int((active["severity"] == "Critical").sum()) if not active.empty else 0
             label = (f"{len(active)} active alert{'s' if len(active) != 1 else ''}"
                      + (f" · {critical} critical" if critical else ""))

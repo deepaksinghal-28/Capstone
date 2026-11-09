@@ -12,9 +12,11 @@ nothing is listed until you search. Typing searches only the server LIST
 import html
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from monitor import ui
+from monitor.alerts import health_score
 from monitor.collectors import (BackupPolicy, evaluate_backups, format_size_mb, format_uptime,
                                 summarize_backups, summarize_databases, summarize_sessions,
                                 version_label)
@@ -48,6 +50,52 @@ if ui.demo_mode():
                       on_click=ui.select_server, args=(t.name,))
 
 
+RATING_COLOUR = {"Good": ui.STATUS_GOOD, "Fair": ui.STATUS_WARNING, "Poor": ui.STATUS_CRITICAL}
+RATING_ICON = {"Good": "✅", "Fair": "⚠️", "Poor": "⛔"}
+
+
+def score_gauge(score: int, rating: str, reasons: list[str]) -> None:
+    """0-100 health score as a gauge, with the reasons that lowered it."""
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number", value=score, number={"font": {"size": 34, "color": ui.INK}},
+        gauge={"axis": {"range": [0, 100], "tickwidth": 0, "tickcolor": ui.AXIS,
+                        "tickfont": {"color": ui.MUTED, "size": 10}},
+               "bar": {"color": RATING_COLOUR[rating], "thickness": 0.8},
+               "bgcolor": ui.GRID, "borderwidth": 0}))
+    fig.update_layout(height=150, margin=dict(l=30, r=34, t=14, b=0),
+                      paper_bgcolor="rgba(0,0,0,0)", font=dict(family=ui.FONT))
+    st.plotly_chart(fig, theme=None, config={"displayModeBar": False}, key="score_gauge")
+    st.markdown(f"<div style='text-align:center;margin-top:-0.6rem'><b>{RATING_ICON[rating]} Health "
+                f"score: {rating}</b></div>", unsafe_allow_html=True)
+    with st.expander("Why this score?"):
+        if reasons:
+            st.markdown("Start at 100, minus each active alert:\n" + "\n".join(f"- {r}" for r in reasons))
+        else:
+            st.markdown("No active alerts - nothing lowers the score.")
+
+
+def card(label, value, page: str, link_label: str, help: str | None = None, chart=None) -> None:
+    """A clickable summary card: the number, an optional 60-minute line, and a link."""
+    with st.container(border=True, width=205):
+        st.metric(label, value, help=help, chart_data=chart, chart_type="line")
+        st.page_link(page, label=link_label, icon=":material/arrow_forward:")
+
+
+def cpu_trend(points: pd.DataFrame) -> None:
+    """Stacked CPU % for the last 60 minutes: SQL Server vs other processes."""
+    fig = go.Figure()
+    for col, name, colour in (("sql_cpu_pct", "SQL Server", ui.SERIES_1),
+                              ("other_cpu_pct", "Other processes", ui.MUTED)):
+        fig.add_scatter(x=points["event_time"], y=points[col], name=name, mode="lines",
+                        stackgroup="cpu", line=dict(width=2, color=colour),
+                        hovertemplate="%{x|%H:%M}  " + name + ": %{y:.0f} %<extra></extra>")
+    fig.update_yaxes(range=[0, 100], ticksuffix=" %")
+    with st.container(border=True):
+        st.markdown("**CPU - last 60 minutes** (SQL Server clock) · hover for exact values")
+        st.plotly_chart(ui.style_figure(fig, 220, left_margin=50), theme=None,
+                        config={"displayModeBar": False}, key="cpu_trend")
+
+
 def show_server_summary(t: ServerTarget) -> None:
     """Everything about ONE server - and nothing about any other."""
     health = ui.health_of(t.server)
@@ -66,29 +114,49 @@ def show_server_summary(t: ServerTarget) -> None:
         crit = int((alerts["severity"] == "Critical").sum()) if not alerts.empty else 0
         warn = int((alerts["severity"] == "Warning").sum()) if not alerts.empty else 0
 
+        score, rating, reasons = health_score(health.connected, alerts)
         if not health.connected:
+            score_gauge(score, rating, reasons)
             ui.show_unavailable(health.error, health.error_detail, health.collected_at_local, t)
         else:
             srv = health.server
-            db_sum = summarize_databases(health.databases)
+            dbs = health.databases
+            db_sum = summarize_databases(dbs)
             sessions = ui.sessions_of(t.server)
             sess = summarize_sessions(sessions.sessions) if sessions.connected else {}
             backups = ui.backups_of(t.server)
             bk = (summarize_backups(evaluate_backups(backups.databases,
                                                      BackupPolicy.from_settings(settings)))
                   if backups.connected else {})
+            cpu = ui.cpu_of(t.server)
             st.markdown(f"SQL Server name **`{srv.get('server_name')}`** · **{version_label(srv)}** · "
-                        f"{srv.get('edition')} · build {srv.get('product_version')}")
-            W = ui.CARD_WIDTH
-            with st.container(horizontal=True, wrap=True, gap="small"):
-                st.metric("Uptime", format_uptime(srv.get("uptime_seconds")), border=True, width=W)
-                st.metric("DBs online", f"{db_sum['online']} / {db_sum['total']}", border=True, width=W)
-                st.metric("Total size", format_size_mb(db_sum["total_size_mb"]), border=True, width=W)
-                st.metric("Sessions", sess.get("sessions", 0), border=True, width=W)
-                st.metric("Blocked", sess.get("blocked", 0), border=True, width=W)
-                st.metric("Backup issues", bk.get("critical", 0) + bk.get("warning", 0), border=True,
-                          width=W, help=f"{bk.get('critical', 0)} critical · {bk.get('warning', 0)} overdue")
-                st.metric("Alerts", f"{crit} ⛔ · {warn} ⚠️", border=True, width=W)
+                        f"{srv.get('edition')} · build {srv.get('product_version')} · "
+                        f"up {format_uptime(srv.get('uptime_seconds'))}")
+
+            left, right = st.columns([1, 2.4], vertical_alignment="top")
+            with left:
+                score_gauge(score, rating, reasons)
+            with right:
+                log_df = dbs.dropna(subset=["log_used_pct"]) if not dbs.empty else dbs
+                top_log = log_df.sort_values("log_used_pct").iloc[-1] if not log_df.empty else None
+                cpu_series = cpu.points["sql_cpu_pct"].astype(float).tolist() if cpu.connected else None
+                with st.container(horizontal=True, wrap=True, gap="small"):
+                    card("Blocked sessions", sess.get("blocked", 0), "views/sessions_blocking.py",
+                         "See blocking", help=f"{sess.get('sessions', 0)} user sessions")
+                    card("SQL Server CPU", f"{cpu_series[-1]:.0f} %" if cpu_series else "n/a",
+                         "views/query_performance.py", "Top queries", chart=cpu_series,
+                         help="Last 60 minutes, from SQL Server's own per-minute history")
+                    card("Highest log use", f"{top_log['log_used_pct']:.0f} %" if top_log is not None else "n/a",
+                         "views/health.py", "Databases",
+                         help=f"{top_log['database_name']}" if top_log is not None else None)
+                    card("DBs online", f"{db_sum['online']} / {db_sum['total']}", "views/health.py",
+                         "Databases", help=format_size_mb(db_sum["total_size_mb"]) + " in total")
+                    card("Backup issues", bk.get("critical", 0) + bk.get("warning", 0), "views/backups.py",
+                         "Backups", help=f"{bk.get('critical', 0)} critical · {bk.get('warning', 0)} overdue")
+                    card("Alerts", f"{crit} ⛔ · {warn} ⚠️", "views/alerts.py", "Alerts")
+
+            if cpu.connected and not cpu.points.empty:
+                cpu_trend(cpu.points)
 
         st.markdown("**Open for this server**")
         with st.container(horizontal=True, wrap=True, gap="small"):

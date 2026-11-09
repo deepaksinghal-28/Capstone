@@ -7,8 +7,8 @@ query text. Source: sys.dm_exec_query_stats + sys.dm_exec_sql_text
                     + sys.dm_exec_plan_attributes
 """
 
+import altair as alt
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from monitor import ui
@@ -94,23 +94,35 @@ with st.container(horizontal=True, wrap=True, gap="small"):
 # Ranking chart (single series -> one colour, title names the metric)
 # ---------------------------------------------------------------------------
 label, column = QUERY_METRICS[metric]
-chart_df = ranked.head(10).iloc[::-1]          # biggest at the top
-y_labels = [f"#{r.rank} · {r.object_name or r.short_text[:28]}" for r in chart_df.itertuples()]
+chart_cols = list(dict.fromkeys(["rank", column, "database_name", "execution_count", "avg_cpu_ms",
+                                 "avg_duration_ms", "avg_logical_reads"]))   # no duplicates
+chart_df = ranked.head(10)[chart_cols].copy()
+chart_df["label"] = [f"#{r.rank} · {r.object_name or r.short_text[:28]}"
+                     for r in ranked.head(10).itertuples()]
 with st.container(border=True):
     st.markdown(f"**Top {len(chart_df)} by {label[0].lower() + label[1:]}**")
-    fig = go.Figure()
-    fig.add_bar(
-        y=y_labels, x=chart_df[column], orientation="h",
-        marker=dict(color=ui.SERIES_1, cornerradius=4), showlegend=False,
-        customdata=chart_df[["database_name", "execution_count", "avg_cpu_ms",
-                             "avg_duration_ms", "avg_logical_reads"]].to_numpy(),
-        hovertemplate=("<b>%{y}</b><br>" + label + ": %{x:,.1f}<br>"
-                       "Database: %{customdata[0]}<br>Executions: %{customdata[1]:,}<br>"
-                       "Avg CPU: %{customdata[2]:,.2f} ms · Avg duration: %{customdata[3]:,.2f} ms"
-                       "<br>Avg logical reads: %{customdata[4]:,.0f}<extra></extra>"),
-    )
-    st.plotly_chart(ui.style_figure(fig, 60 + 34 * len(chart_df), left_margin=220),
-                    theme=None, config={"displayModeBar": False})
+    # Clickable Altair chart: click a bar to select that query (double-click clears).
+    qp_pick = alt.selection_point(name="pick", fields=["rank"], on="click", clear="dblclick")
+    qp_chart = alt.Chart(chart_df).mark_bar(cornerRadiusEnd=3, color=ui.SERIES_1, cursor="pointer").encode(
+        y=alt.Y("label:N", sort=alt.EncodingSortField(field="rank", order="ascending"), title=None),
+        x=alt.X(f"{column}:Q", title=label),
+        opacity=alt.condition(qp_pick, alt.value(1.0), alt.value(0.35)),
+        tooltip=[alt.Tooltip("label:N", title="Query"), alt.Tooltip(f"{column}:Q", title=label, format=",.1f"),
+                 alt.Tooltip("database_name:N", title="Database"),
+                 alt.Tooltip("execution_count:Q", title="Executions", format=","),
+                 alt.Tooltip("avg_cpu_ms:Q", title="Avg CPU (ms)", format=",.2f"),
+                 alt.Tooltip("avg_duration_ms:Q", title="Avg duration (ms)", format=",.2f"),
+                 alt.Tooltip("avg_logical_reads:Q", title="Avg logical reads", format=",.0f")],
+    ).add_params(qp_pick)
+    chart_event = st.altair_chart(ui.style_altair(qp_chart, 40 + 30 * len(chart_df)), theme=None,
+                                  key="qp_chart", on_select="rerun", selection_mode="pick")
+    st.caption("Tip: click a bar to see that query's full SQL text below (double-click to clear).")
+
+
+def clicked_rank(event) -> int | None:
+    """Rank number of the clicked bar, or None."""
+    value = ui.altair_pick(event, "rank")
+    return int(value) if value is not None else None
 
 # ---------------------------------------------------------------------------
 # Detail table - select a row to see the full statement
@@ -144,8 +156,13 @@ event = st.dataframe(
 )
 
 selected_rows = event.selection.rows if event and event.selection else []
-if selected_rows:
+chart_rank = clicked_rank(chart_event)
+row = None
+if selected_rows:                                   # table selection wins
     row = ranked.iloc[selected_rows[0]]
+elif chart_rank is not None and chart_rank in set(ranked["rank"]):
+    row = ranked[ranked["rank"] == chart_rank].iloc[0]
+if row is not None:
     with st.container(border=True):
         st.markdown(f"**#{row['rank']} · {row['database_name']}"
                     f"{' · ' + row['object_name'] if row['object_name'] else ''}**  ·  "

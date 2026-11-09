@@ -499,6 +499,37 @@ def collect_backups(settings: Settings | None = None, history_rows: int = 100) -
                           databases=last, history=history)
 
 
+# ---------------------------------------------------------------------------
+# CPU trend (SQL Server's own per-minute history - nothing stored by this app)
+# ---------------------------------------------------------------------------
+@dataclass
+class CpuHistory:
+    connected: bool
+    points: pd.DataFrame = field(default_factory=pd.DataFrame)   # event_time, sql_cpu_pct, other_cpu_pct
+    error: str | None = None
+
+    @property
+    def latest_total(self) -> float | None:
+        if self.points.empty:
+            return None
+        last = self.points.sort_values("event_time").iloc[-1]
+        return float(last["sql_cpu_pct"] + last["other_cpu_pct"])
+
+
+def collect_cpu_history(settings: Settings | None = None, minutes: int = 60) -> CpuHistory:
+    settings = settings or get_settings()
+    try:
+        with connect(settings) as conn:
+            df = query_df(conn, queries.CPU_HISTORY, [int(minutes)], settings)
+    except DatabaseError as exc:
+        return CpuHistory(connected=False, error=exc.friendly_message)
+    if not df.empty:
+        for col in ("sql_cpu_pct", "other_cpu_pct"):
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0).clip(lower=0)
+        df = df.sort_values("event_time")
+    return CpuHistory(connected=True, points=df)
+
+
 def collect_health(settings: Settings | None = None) -> HealthSnapshot:
     """Collect Module 1 data. Never raises; failures come back as connected=False."""
     settings = settings or get_settings()

@@ -37,6 +37,75 @@ def fmt_seconds(s: float) -> str:
     return f"{s:.1f} s"
 
 
+def chains_table(chains: pd.DataFrame) -> None:
+    st.dataframe(
+        chains, hide_index=True,
+        column_order=["chain", "session_id", "blocked_by", "head_blocker", "wait_type",
+                      "wait_seconds", "wait_resource", "database_name", "login_name", "sql_text"],
+        column_config={
+            "chain": st.column_config.TextColumn("Chain (head → … → blocked)"),
+            "session_id": st.column_config.NumberColumn("Blocked session", format="%d"),
+            "blocked_by": st.column_config.NumberColumn("Blocked by", format="%d"),
+            "head_blocker": st.column_config.NumberColumn("Head blocker", format="%d"),
+            "wait_type": st.column_config.TextColumn("Wait type"),
+            "wait_seconds": st.column_config.NumberColumn("Waiting (s)", format="%.1f"),
+            "wait_resource": st.column_config.TextColumn("Wait resource"),
+            "database_name": st.column_config.TextColumn("Database"),
+            "login_name": st.column_config.TextColumn("Login"),
+            "sql_text": st.column_config.TextColumn("Blocked statement", width="large"),
+        },
+    )
+
+
+def leaf_paths(chains: pd.DataFrame) -> list[list[int]]:
+    """Every head-to-leaf path, e.g. [[72, 75, 78]] - one row of boxes per path."""
+    blockers = set(chains["blocked_by"].astype(int))
+    leaves = chains[~chains["session_id"].astype(int).isin(blockers)]
+    return [[int(s) for s in str(c).split(" → ")] for c in leaves.sort_values("chain")["chain"]]
+
+
+def pick_session(sid: int) -> None:
+    st.session_state["sess_node"] = sid
+
+
+def blocking_tree(sessions: pd.DataFrame, chains: pd.DataFrame) -> None:
+    """Head blocker → … → blocked sessions as clickable boxes, plus a details panel."""
+    by_id = sessions.set_index("session_id")
+    for n, path in enumerate(leaf_paths(chains)):
+        with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=True):
+            for i, sid in enumerate(path):
+                if i:
+                    st.markdown("**→**")
+                row = by_id.loc[sid] if sid in by_id.index else None
+                if i == 0:
+                    label = f"⛔ {sid} · head blocker"
+                elif row is not None:
+                    wt = row["wait_type"] if isinstance(row["wait_type"], str) and row["wait_type"] else "waiting"
+                    label = f"🔒 {sid} · {wt} · {row['wait_seconds']:.0f} s"
+                else:
+                    label = f"🔒 {sid}"
+                st.button(label, key=f"node_{n}_{sid}", on_click=pick_session, args=(sid,),
+                          type="primary" if st.session_state.get("sess_node") == sid else "secondary")
+    sid = st.session_state.get("sess_node")
+    if sid is not None and sid in by_id.index:
+        r = by_id.loc[sid]
+        with st.container(border=True):
+            role = ("head blocker - it is not waiting, other sessions wait for it"
+                    if r["is_head_blocker"] else f"blocked by session {int(r['blocking_session_id'])}")
+            st.markdown(f"**Session {sid}** · {role}  \n"
+                        f"{r['login_name']} · {r['program_name'] or 'no program name'} · host "
+                        f"{r['host_name']} · database {r['database_name']} · {r['state_label']}")
+            with st.container(horizontal=True, wrap=True, gap="small"):
+                st.metric("Waiting", f"{r['wait_seconds']:.0f} s", border=True, width=ui.CARD_WIDTH)
+                wait_type = r["wait_type"] if isinstance(r["wait_type"], str) and r["wait_type"] else "-"
+                st.metric("Wait type", wait_type, border=True, width=ui.CARD_WIDTH)
+                st.metric("Open transactions", int(r["open_transaction_count"]), border=True,
+                          width=ui.CARD_WIDTH)
+            st.code(r["sql_text"] or "-- no SQL text available", language="sql")
+    else:
+        ui.footnote("Click a session box to see its login, wait and SQL statement here.")
+
+
 @st.fragment(run_every=10 if auto else None)
 def live_view() -> None:
     snap = ui.sessions_of(target.server)
@@ -97,28 +166,15 @@ def live_view() -> None:
     if not chains.empty:
         st.subheader("Blocking chains")
         st.caption("Read a chain left to right: the first session blocks the next one, and so on. "
-                   "Fix the HEAD blocker (first number) and the whole chain clears.")
-        st.dataframe(
-            chains, hide_index=True,
-            column_order=["chain", "session_id", "blocked_by", "head_blocker", "wait_type",
-                          "wait_seconds", "wait_resource", "database_name", "login_name", "sql_text"],
-            column_config={
-                "chain": st.column_config.TextColumn("Chain (head → … → blocked)"),
-                "session_id": st.column_config.NumberColumn("Blocked session", format="%d"),
-                "blocked_by": st.column_config.NumberColumn("Blocked by", format="%d"),
-                "head_blocker": st.column_config.NumberColumn("Head blocker", format="%d"),
-                "wait_type": st.column_config.TextColumn("Wait type"),
-                "wait_seconds": st.column_config.NumberColumn("Waiting (s)", format="%.1f"),
-                "wait_resource": st.column_config.TextColumn("Wait resource"),
-                "database_name": st.column_config.TextColumn("Database"),
-                "login_name": st.column_config.TextColumn("Login"),
-                "sql_text": st.column_config.TextColumn("Blocked statement", width="large"),
-            },
-        )
+                   "Fix the HEAD blocker (first box) and the whole chain clears. "
+                   "Click a session to see its details.")
+        blocking_tree(sessions, chains)
+        with st.expander("Chain details as a table"):
+            chains_table(chains)
         with st.expander("How to investigate and release blocking (DBA checklist)"):
             head_ids = ", ".join(str(int(s)) for s in sessions.loc[sessions["is_head_blocker"], "session_id"])
             st.markdown(
-                f"1. Look at the **head blocker** ({head_ids}): its last statement is in the table below.\n"
+                f"1. Look at the **head blocker** ({head_ids}): click it above to see its last statement.\n"
                 "2. *Idle with open transaction* usually means an application or user began a "
                 "transaction and never committed - contact the owner (login / host / program).\n"
                 "3. Check what it holds: `SELECT * FROM sys.dm_tran_locks WHERE request_session_id = <id>;`\n"

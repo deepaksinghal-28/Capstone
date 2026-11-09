@@ -7,8 +7,8 @@ Sources: sys.dm_os_sys_info, sys.dm_os_process_memory, sys.configurations,
          sys.databases, sys.master_files, sys.dm_os_performance_counters
 """
 
+import altair as alt
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 
 from monitor import ui
@@ -80,42 +80,90 @@ with st.container(horizontal=True, wrap=True, gap="small"):
 # ---------------------------------------------------------------------------
 left, right = st.columns(2)
 
-chart_df = dbs.sort_values("total_size_mb", ascending=True)
+# Clickable Altair charts: click a bar to select that database (double-click clears).
+chart_df = dbs.sort_values("total_size_mb", ascending=False)
+order = chart_df["database_name"].tolist()
 with left:
     with st.container(border=True):
         st.markdown("**Database size by file type (MB)**")
-        size_fig = go.Figure()
-        for col, name, colour in [("data_size_mb", "Data files", ui.SERIES_1),
-                                  ("log_size_mb", "Log files", ui.SERIES_2)]:
-            size_fig.add_bar(
-                y=chart_df["database_name"], x=chart_df[col], name=name, orientation="h",
-                marker=dict(color=colour, line=dict(color=ui.SURFACE, width=2), cornerradius=4),
-                hovertemplate="<b>%{y}</b><br>" + name + ": %{x:,.1f} MB<extra></extra>",
-            )
-        size_fig.update_layout(barmode="stack")
-        size_fig.update_xaxes(ticksuffix=" MB")
-        st.plotly_chart(ui.style_figure(size_fig, 300), theme=None,
-                        config={"displayModeBar": False})
+        size_pick = alt.selection_point(name="pick", fields=["database_name"], on="click", clear="dblclick")
+        long =chart_df.melt(id_vars=["database_name"], value_vars=["data_size_mb", "log_size_mb"],
+                             var_name="file", value_name="mb")
+        long["file"] = long["file"].map({"data_size_mb": "Data files", "log_size_mb": "Log files"})
+        size_chart = alt.Chart(long).mark_bar(cornerRadiusEnd=3, cursor="pointer").encode(
+            y=alt.Y("database_name:N", sort=order, title=None),
+            x=alt.X("mb:Q", title="MB", stack="zero"),
+            color=alt.Color("file:N", scale=alt.Scale(domain=["Data files", "Log files"],
+                                                      range=[ui.SERIES_1, ui.SERIES_2])),
+            opacity=alt.condition(size_pick, alt.value(1.0), alt.value(0.35)),
+            tooltip=[alt.Tooltip("database_name:N", title="Database"), alt.Tooltip("file:N", title="File"),
+                     alt.Tooltip("mb:Q", title="MB", format=",.1f")],
+        ).add_params(size_pick)
+        size_event = st.altair_chart(ui.style_altair(size_chart, 280), theme=None, key="size_chart",
+                                     on_select="rerun", selection_mode="pick")
 
 with right:
     with st.container(border=True):
         st.markdown("**Transaction log used (%)**")
-        log_df = dbs.dropna(subset=["log_used_pct"]).sort_values("log_used_pct")
-        log_fig = go.Figure()
-        log_fig.add_bar(
-            y=log_df["database_name"], x=log_df["log_used_pct"], orientation="h",
-            marker=dict(color=ui.SERIES_1, cornerradius=4), showlegend=False,
-            text=log_df["log_used_pct"].map(lambda v: f"{v:.0f}%"), textposition="outside",
-            textfont=dict(color=ui.INK_2),
-            hovertemplate="<b>%{y}</b><br>Log used: %{x:.0f}%<extra></extra>",
-        )
+        log_df = dbs.dropna(subset=["log_used_pct"])
         threshold = settings.log_used_warning_pct
-        log_fig.add_vline(x=threshold, line=dict(color=ui.MUTED, width=2, dash="dash"),
-                          annotation_text=f"Warning at {threshold}%",
-                          annotation_position="top", annotation_font_color=ui.INK_2)
-        log_fig.update_xaxes(range=[0, 105], ticksuffix="%")
-        st.plotly_chart(ui.style_figure(log_fig, 300), theme=None,
-                        config={"displayModeBar": False})
+        pick2 = alt.selection_point(name="pick", fields=["database_name"], on="click", clear="dblclick")
+        y = alt.Y("database_name:N", sort="-x", title=None)
+        bars = alt.Chart(log_df).mark_bar(cornerRadiusEnd=3, color=ui.SERIES_1, cursor="pointer").encode(
+            y=y, x=alt.X("log_used_pct:Q", title="% of log file in use", scale=alt.Scale(domain=[0, 105])),
+            opacity=alt.condition(pick2, alt.value(1.0), alt.value(0.35)),
+            tooltip=[alt.Tooltip("database_name:N", title="Database"),
+                     alt.Tooltip("log_used_pct:Q", title="Log used %", format=".0f")],
+        ).add_params(pick2)
+        labels = alt.Chart(log_df).mark_text(align="left", dx=4, color=ui.INK_2).encode(
+            y=y, x=alt.X("log_used_pct:Q", title="% of log file in use"),
+            text=alt.Text("log_used_pct:Q", format=".0f"))
+        rule = alt.Chart(pd.DataFrame({"t": [threshold]})).mark_rule(
+            color=ui.MUTED, strokeDash=[5, 4], size=2).encode(x=alt.X("t:Q", title="% of log file in use"))
+        log_event = st.altair_chart(ui.style_altair(alt.layer(bars, labels, rule), 280), theme=None,
+                                    key="log_chart", on_select="rerun", selection_mode="pick")
+        st.caption(f"Dashed line = warning at {threshold}% used.")
+
+
+# ---------------------------------------------------------------------------
+# Drill-down: click a bar in either chart (or pick from the list) -> details
+# ---------------------------------------------------------------------------
+clicked = ui.altair_pick(size_event, "database_name") or ui.altair_pick(log_event, "database_name")
+names = dbs["database_name"].tolist()
+if clicked in names and clicked != st.session_state.get("_health_last_click"):
+    st.session_state["health_db_pick"] = clicked          # a NEW click wins over the list choice
+st.session_state["_health_last_click"] = clicked
+st.caption("Tip: click a bar in either chart to open that database's details.")
+pick = st.selectbox("Database details", ["-"] + names, key="health_db_pick",
+                    format_func=lambda n: "Choose a database…" if n == "-" else n)
+if pick and pick != "-":
+    row = dbs.set_index("database_name").loc[pick]
+    backups = ui.backups_of(target.server)
+    bk_row = None
+    if backups.connected and not backups.databases.empty:
+        from monitor.collectors import BackupPolicy, evaluate_backups
+        ev = evaluate_backups(backups.databases, BackupPolicy.from_settings(settings))
+        match = ev[ev["database_name"] == pick]
+        bk_row = match.iloc[0] if not match.empty else None
+    with st.container(border=True):
+        st.markdown(f"**{pick}** · {ui.STATUS_LABEL.get(row['health_status'], row['health_status'])} · "
+                    f"{row['state_desc']} · {row['recovery_model_desc']} recovery · "
+                    f"compatibility {row['compatibility_level']}")
+        W = ui.CARD_WIDTH
+        with st.container(horizontal=True, wrap=True, gap="small"):
+            st.metric("Data files", f"{row['data_size_mb']:,.1f} MB", border=True, width=W)
+            st.metric("Log file", f"{row['log_size_mb']:,.1f} MB", border=True, width=W)
+            st.metric("Log used", f"{row['log_used_pct']:.0f} %" if pd.notna(row["log_used_pct"]) else "n/a",
+                      border=True, width=W)
+            if bk_row is not None:
+                st.metric("Last full backup", bk_row["full_age_text"] + (" ago" if bk_row["full_age_text"] != "never" else ""),
+                          border=True, width=W)
+                st.metric("Log backup", bk_row["log_backup_state"], border=True, width=W)
+        if bk_row is not None:
+            st.markdown(f"Backup check: {bk_row['findings']}")
+            if bk_row.get("log_reuse_wait_desc") not in (None, "NOTHING"):
+                st.markdown(f"The log can't be reused yet because of **{bk_row['log_reuse_wait_desc']}**.")
+        st.page_link("views/backups.py", label="Open backup details", icon=":material/arrow_forward:")
 
 # ---------------------------------------------------------------------------
 # Database table with search / filters

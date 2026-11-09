@@ -109,7 +109,7 @@ def test_real_mode_stays_off_where_the_driver_exists(monkeypatch):
 def test_demo_opens_with_a_server_and_every_module_has_data():
     at = _run()                                                      # nothing selected by the visitor
     assert at.session_state["selected_server"] == "DEMO-PROD-01"
-    assert "Uptime" in [m.label for m in at.metric]                 # summary shown straight away
+    assert "Blocked sessions" in [m.label for m in at.metric]                 # summary shown straight away
     assert {f"demo_{t.name}" for t in DEMO_TARGETS} <= {b.key for b in at.button}
     for page in ("views/health.py", "views/query_performance.py", "views/sessions_blocking.py",
                  "views/backups.py", "views/alerts.py"):

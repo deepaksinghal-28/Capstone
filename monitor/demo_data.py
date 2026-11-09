@@ -272,6 +272,27 @@ def backups(server: str) -> BackupSnapshot:
 
 
 # ---------------------------------------------------------------------------
+# CPU trend (last 60 minutes, one point per minute)
+# ---------------------------------------------------------------------------
+CPU_LEVEL = {"demo-prod-01.example.local": 38, "demo-prod-02.example.local\\FINANCE": 64,
+             "demo-uat-01.example.local": 12, "demo-report-01.example.local": 81}
+
+
+def cpu_history(server: str, minutes: int = 60):
+    from monitor.collectors import CpuHistory
+    if server in UNREACHABLE:
+        return CpuHistory(connected=False, error=_unreachable(server))
+    rng, now, base = _rng(server, "cpu"), _now(), CPU_LEVEL.get(server, 20)
+    rows = []
+    for m in range(minutes, 0, -1):
+        wave = 10 if (m // 12) % 2 else -6
+        sql = max(1, min(95, base + wave + rng.randint(-8, 8)))
+        rows.append({"event_time": pd.Timestamp(now - timedelta(minutes=m)),
+                     "sql_cpu_pct": sql, "other_cpu_pct": rng.randint(2, 9)})
+    return CpuHistory(connected=True, points=pd.DataFrame(rows))
+
+
+# ---------------------------------------------------------------------------
 # Module 5 - extra input for the memory-pressure rule
 # ---------------------------------------------------------------------------
 def memory(server: str):

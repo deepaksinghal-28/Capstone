@@ -393,6 +393,27 @@ WHERE e.notification = 'RESOURCE_MEMPHYSICAL_LOW'
 """
 
 
+# CPU history kept by SQL Server itself: one record per minute for roughly the
+# last 4 hours in RING_BUFFER_SCHEDULER_MONITOR - so a trend line needs no
+# extra storage. Parameter: number of minutes to return.
+CPU_HISTORY = """
+DECLARE @minutes int = ?;
+DECLARE @now_ticks bigint = (SELECT ms_ticks FROM sys.dm_os_sys_info);
+SELECT TOP (@minutes)
+    DATEADD(ms, -1 * (@now_ticks - rb.[timestamp]), SYSDATETIME())                         AS event_time,
+    rb.record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS sql_cpu_pct,
+    100 - rb.record.value('(./Record/SchedulerMonitorEvent/SystemHealth/SystemIdle)[1]', 'int')
+        - rb.record.value('(./Record/SchedulerMonitorEvent/SystemHealth/ProcessUtilization)[1]', 'int') AS other_cpu_pct
+FROM (
+    SELECT [timestamp], CONVERT(xml, record) AS record
+    FROM sys.dm_os_ring_buffers
+    WHERE ring_buffer_type = N'RING_BUFFER_SCHEDULER_MONITOR'
+      AND record LIKE N'%<SystemHealth>%'
+) AS rb
+ORDER BY rb.[timestamp] DESC;
+"""
+
+
 # How much history the plan cache currently holds (for the "statistics since" note).
 PLAN_CACHE_SUMMARY = """
 SELECT

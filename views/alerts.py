@@ -8,6 +8,8 @@ Refreshing does not create duplicates: alerts are tracked by a stable key in a
 local SQLite file (see monitor/alerts.py).
 """
 
+import os
+
 import pandas as pd
 import streamlit as st
 
@@ -76,19 +78,52 @@ c2.caption("Alerts are de-duplicated: a refresh updates *last seen* and the chec
 # ---------------------------------------------------------------------------
 # Active alerts - one card each, most severe first
 # ---------------------------------------------------------------------------
+def who() -> str:
+    """Who acknowledged - the Windows user locally, 'demo visitor' in the public demo."""
+    return "demo visitor" if settings.demo_mode else (os.getenv("USERNAME") or "dashboard user")
+
+
+def act(action: str, key: str) -> None:
+    """Button callbacks: change ONLY the local alert file, never SQL Server."""
+    if action == "ack":
+        store.acknowledge(key, who())
+    elif action == "unack":
+        store.unacknowledge(key)
+    elif action == "snooze":
+        store.snooze(key, 60)
+    elif action == "unsnooze":
+        store.unsnooze(key)
+
+
 st.subheader("Active alerts")
 if active.empty:
     st.info("Nothing to investigate right now.", icon="🎉")
 else:
-    sev_filter = st.multiselect("Severity", ["Critical", "Warning", "Info"],
+    f1, f2 = st.columns([3, 1], vertical_alignment="bottom")
+    sev_filter = f1.multiselect("Severity", ["Critical", "Warning", "Info"],
                                 default=["Critical", "Warning", "Info"], key="al_sev")
+    show_snoozed = f2.toggle("Show snoozed", value=False, key="al_show_snoozed")
     shown = active[active["severity"].isin(sev_filter)]
+    snoozed_count = int(shown["is_snoozed"].sum())
+    if not show_snoozed:
+        shown = shown[~shown["is_snoozed"]]
+    if snoozed_count and not show_snoozed:
+        st.caption(f"{snoozed_count} snoozed alert(s) hidden - switch on *Show snoozed* to see them.")
+    # Unacknowledged first, then by severity.
+    shown = shown.sort_values(["is_acknowledged", "severity_rank", "first_seen"])
     for a in shown.itertuples():
         with st.container(border=True):
             top_left, top_right = st.columns([3, 2])
             server_part = f"{a.server} · " if isinstance(a.server, str) and a.server else ""
+            state = []
+            if a.is_acknowledged:
+                state.append(f"✔ Acknowledged by {a.acknowledged_by} at {a.acknowledged_at:%H:%M}")
+            if a.is_snoozed:
+                state.append(f"💤 Snoozed until {a.snoozed_until:%H:%M}")
             top_left.markdown(f"**{a.severity_label} · {a.name}**  \n"
-                              f"Affected: **{server_part}{a.target}**")
+                              f"Affected: **{server_part}{a.target}**"
+                              + (f"  \n<span class='footnote'>{' · '.join(state)}</span>" if state else ""),
+                              unsafe_allow_html=True)
             top_right.markdown(
                 f"<div class='footnote' style='text-align:right'>Detected {a.first_seen:%Y-%m-%d %H:%M:%S} "
                 f"({age_text(a.first_seen)})<br>Last seen {a.last_seen:%H:%M:%S} · "
@@ -99,6 +134,20 @@ else:
             with st.expander("Recommended DBA investigation steps"):
                 st.markdown("\n".join(f"{i}. {step}" for i, step in
                                       enumerate(a.recommendation.split("\n"), start=1)))
+            with st.container(horizontal=True, gap="small"):
+                if a.is_acknowledged:
+                    st.button("Undo acknowledge", key=f"unack_{a.alert_key}", on_click=act,
+                              args=("unack", a.alert_key))
+                else:
+                    st.button("Acknowledge", icon="✔", key=f"ack_{a.alert_key}", on_click=act,
+                              args=("ack", a.alert_key), help="Mark as seen and being handled")
+                if a.is_snoozed:
+                    st.button("Wake up now", key=f"unsnooze_{a.alert_key}", on_click=act,
+                              args=("unsnooze", a.alert_key))
+                else:
+                    st.button("Snooze 1 h", icon="💤", key=f"snooze_{a.alert_key}", on_click=act,
+                              args=("snooze", a.alert_key),
+                              help="Hide this alert for 1 hour; it comes back if still active")
 
 # ---------------------------------------------------------------------------
 # Resolved alerts

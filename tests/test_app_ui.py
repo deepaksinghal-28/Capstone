@@ -63,7 +63,7 @@ def test_search_with_one_match_shows_only_that_server():
     text = _text(at)
     assert "Secondary" in text and "localhost\\SQLDEV2" in text
     assert "Primary" not in text                               # the other server is not shown
-    assert "Uptime" in [m.label for m in at.metric]
+    assert "Blocked sessions" in [m.label for m in at.metric]
 
 
 def test_search_with_several_matches_lists_names_only_then_select():
@@ -74,7 +74,7 @@ def test_search_with_several_matches_lists_names_only_then_select():
     at.button(key="pick_Primary").click().run()
     assert not at.exception, at.exception
     assert at.session_state["selected_server"] == "Primary"
-    assert "Uptime" in [m.label for m in at.metric]
+    assert "Blocked sessions" in [m.label for m in at.metric]
 
 
 def test_search_primary_after_secondary_switches_server():

@@ -344,11 +344,15 @@ class AlertStore:
 
     @staticmethod
     def _migrate(conn: sqlite3.Connection, legacy_server: str) -> None:
-        """Upgrade a single-server store: add the server column and prefix old keys
-        with the first server's name, so existing alerts continue (no duplicates)."""
+        """Upgrade older stores: add the server column (prefix old keys with the
+        first server's name, so existing alerts continue - no duplicates) and the
+        acknowledge / snooze columns."""
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(alerts)")}
         if "server" not in columns:
             conn.execute("ALTER TABLE alerts ADD COLUMN server TEXT")
+        for col in ("acknowledged_at", "acknowledged_by", "snoozed_until"):
+            if col not in columns:
+                conn.execute(f"ALTER TABLE alerts ADD COLUMN {col} TEXT")
         if legacy_server:
             conn.execute("UPDATE alerts SET server = ?, alert_key = ? || '|' || alert_key "
                          "WHERE server IS NULL", (legacy_server, legacy_server))
@@ -394,7 +398,8 @@ class AlertStore:
                     conn.execute(
                         "UPDATE alerts SET name=?, severity=?, description=?, recommendation=?, "
                         "status='ACTIVE', first_seen=?, last_seen=?, resolved_at=NULL, checks_seen=1, "
-                        "times_opened=times_opened+1 WHERE alert_key=?",
+                        "times_opened=times_opened+1, acknowledged_at=NULL, acknowledged_by=NULL, "
+                        "snoozed_until=NULL WHERE alert_key=?",
                         (c.name, c.severity, c.description, rec, ts, ts, key))
                     counts["reopened"] += 1
             for key, row in existing.items():
@@ -407,18 +412,64 @@ class AlertStore:
                 "DELETE FROM alerts WHERE status='RESOLVED' AND resolved_at < ?", (cutoff,)).rowcount
         return counts
 
-    def frame(self, status: str | None = None) -> pd.DataFrame:
+    # --- Operator actions (local only - SQL Server is never changed) -------------
+    def acknowledge(self, key: str, by: str, now: datetime | None = None) -> None:
+        ts = (now or datetime.now()).isoformat(timespec="seconds")
+        with self._conn() as conn:
+            conn.execute("UPDATE alerts SET acknowledged_at=?, acknowledged_by=? WHERE alert_key=?",
+                         (ts, by, key))
+
+    def unacknowledge(self, key: str) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE alerts SET acknowledged_at=NULL, acknowledged_by=NULL WHERE alert_key=?",
+                         (key,))
+
+    def snooze(self, key: str, minutes: int, now: datetime | None = None) -> None:
+        until = ((now or datetime.now()) + timedelta(minutes=minutes)).isoformat(timespec="seconds")
+        with self._conn() as conn:
+            conn.execute("UPDATE alerts SET snoozed_until=? WHERE alert_key=?", (until, key))
+
+    def unsnooze(self, key: str) -> None:
+        with self._conn() as conn:
+            conn.execute("UPDATE alerts SET snoozed_until=NULL WHERE alert_key=?", (key,))
+
+    def frame(self, status: str | None = None, now: datetime | None = None) -> pd.DataFrame:
         sql = "SELECT * FROM alerts" + (" WHERE status = ?" if status else "")
         with self._conn() as conn:
             rows = [dict(r) for r in conn.execute(sql, (status,) if status else ())]
         df = pd.DataFrame(rows)
         if df.empty:
             return df
-        for col in ("first_seen", "last_seen", "resolved_at"):
+        for col in ("first_seen", "last_seen", "resolved_at", "acknowledged_at", "snoozed_until"):
             df[col] = pd.to_datetime(df[col], errors="coerce")
         df["severity_rank"] = df["severity"].map(SEVERITY_ORDER)
         df["severity_label"] = df["severity"].map(SEVERITY_LABEL)
+        df["is_acknowledged"] = df["acknowledged_at"].notna()
+        df["is_snoozed"] = df["snoozed_until"].notna() & (df["snoozed_until"] > pd.Timestamp(now or datetime.now()))
         return df.sort_values(["severity_rank", "first_seen"])
+
+
+SCORE_PENALTY = {"Critical": 20, "Warning": 8, "Info": 2}
+
+
+def health_score(connected: bool, active: pd.DataFrame) -> tuple[int, str, list[str]]:
+    """
+    0-100 health score for one server, derived from its ACTIVE alerts so it
+    always agrees with the Alerts page:  100 - 20 per critical - 8 per warning
+    - 2 per info (snoozed or acknowledged alerts still count - they are not fixed).
+    Unreachable server = 0.  Rating: Good >= 85, Fair 60-84, Poor < 60.
+    """
+    if not connected:
+        return 0, "Poor", ["SQL Server is unreachable (-100)"]
+    reasons, penalty = [], 0
+    if not active.empty:
+        for a in active.sort_values("severity_rank").itertuples():
+            p = SCORE_PENALTY.get(a.severity, 0)
+            penalty += p
+            reasons.append(f"{a.name} - {a.target} (-{p})")
+    score = max(0, 100 - penalty)
+    rating = "Good" if score >= 85 else "Fair" if score >= 60 else "Poor"
+    return score, rating, reasons
 
 
 def summarize_alerts(active: pd.DataFrame) -> dict[str, Any]:

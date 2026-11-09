@@ -82,9 +82,14 @@ def test_split_batches_like_ssms():
 @pytest.mark.integration
 @pytest.mark.parametrize("metric", list(QUERY_METRICS))
 def test_tc04_top_queries_from_real_plan_cache(metric):
-    run_query("SELECT COUNT(*) AS n FROM sys.objects;")       # guarantees >= 1 cached plan
-    snap = collect_query_stats(metric, fetch_rows=20)
-    assert snap.connected, snap.error
+    # Windows low-memory notifications can empty the plan cache at any moment on
+    # this PC, so run a query and read the cache again if it was just flushed.
+    for _attempt in range(3):
+        run_query("SELECT COUNT(*) AS n FROM sys.objects;")   # guarantees >= 1 cached plan
+        snap = collect_query_stats(metric, fetch_rows=20)
+        assert snap.connected, snap.error
+        if not snap.queries.empty:
+            break
     assert not snap.queries.empty
     for col in ("total_cpu_ms", "avg_cpu_ms", "avg_duration_ms", "avg_logical_reads", "query_text"):
         assert col in snap.queries.columns
