@@ -141,3 +141,15 @@ def test_alert_acknowledge_and_snooze_buttons(demo):
     snooze = [b for b in at.button if str(b.key).startswith("snooze_")]
     snooze[0].click().run()
     assert any("snoozed alert(s) hidden" in c.value for c in at.caption)
+
+
+def test_altair_pick_reads_the_clicked_value():
+    """Chart clicks arrive as {'selection': {'pick': [{field: value}]}}."""
+    from types import SimpleNamespace
+
+    from monitor import ui
+    event = SimpleNamespace(selection={"pick": [{"database_name": "SalesDB"}]})
+    assert ui.altair_pick(event, "database_name") == "SalesDB"
+    assert ui.altair_pick({"selection": {"pick": [{"rank": 2}]}}, "rank") == 2
+    assert ui.altair_pick({"selection": {"pick": []}}, "database_name") is None   # cleared
+    assert ui.altair_pick(None, "database_name") is None

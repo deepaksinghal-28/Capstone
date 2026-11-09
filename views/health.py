@@ -110,7 +110,7 @@ with right:
         pick2 = alt.selection_point(name="pick", fields=["database_name"], on="click", clear="dblclick")
         y = alt.Y("database_name:N", sort="-x", title=None)
         bars = alt.Chart(log_df).mark_bar(cornerRadiusEnd=3, color=ui.SERIES_1, cursor="pointer").encode(
-            y=y, x=alt.X("log_used_pct:Q", title="% of log file in use", scale=alt.Scale(domain=[0, 105])),
+            y=y, x=alt.X("log_used_pct:Q", title="% of log file in use", scale=alt.Scale(domain=[0, 105], nice=False)),
             opacity=alt.condition(pick2, alt.value(1.0), alt.value(0.35)),
             tooltip=[alt.Tooltip("database_name:N", title="Database"),
                      alt.Tooltip("log_used_pct:Q", title="Log used %", format=".0f")],
@@ -128,11 +128,15 @@ with right:
 # ---------------------------------------------------------------------------
 # Drill-down: click a bar in either chart (or pick from the list) -> details
 # ---------------------------------------------------------------------------
-clicked = ui.altair_pick(size_event, "database_name") or ui.altair_pick(log_event, "database_name")
 names = dbs["database_name"].tolist()
-if clicked in names and clicked != st.session_state.get("_health_last_click"):
-    st.session_state["health_db_pick"] = clicked          # a NEW click wins over the list choice
-st.session_state["_health_last_click"] = clicked
+# Each chart keeps its own selection, so remember each one separately: whichever
+# chart was clicked most recently (a NEW value) wins over the other and the list.
+for chart_name, chart_event in (("size", size_event), ("log", log_event)):
+    clicked = ui.altair_pick(chart_event, "database_name")
+    last_key = f"_health_last_{chart_name}"
+    if clicked in names and clicked != st.session_state.get(last_key):
+        st.session_state["health_db_pick"] = clicked
+    st.session_state[last_key] = clicked
 st.caption("Tip: click a bar in either chart to open that database's details.")
 pick = st.selectbox("Database details", ["-"] + names, key="health_db_pick",
                     format_func=lambda n: "Choose a database…" if n == "-" else n)
