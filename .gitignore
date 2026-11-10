@@ -13,6 +13,9 @@ venv/
 # Claude Code settings (machine-specific, not part of the project)
 .claude/
 
+# BITS reports: contain student ID, e-mail and supervisor contact details - never publish
+reports/
+
 # Editor / OS files
 .vscode/
 Thumbs.db

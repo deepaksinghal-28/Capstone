@@ -100,7 +100,8 @@ cards[3].metric("Peak user sessions", f"{sessions.max():.0f}" if sessions.notna(
                 help=f"Average {sessions.mean():.0f}" if sessions.notna().any() else None)
 if not user_growth.empty:
     top = user_growth.iloc[0]
-    cards[4].metric("Fastest-growing database", top["database_name"], f"{top['mb_per_day']:+,.0f} MB per day",
+    cards[4].metric("Fastest-growing database", top["database_name"],
+                    f"{round(float(top['mb_per_day'])):+,d} MB per day",      # round first: no "-0"
                     delta_color="off", delta_arrow="off", border=True,
                     help="Data + log size, trend line through every snapshot in the range")
 else:

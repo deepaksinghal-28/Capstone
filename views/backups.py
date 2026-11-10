@@ -81,7 +81,7 @@ with st.container(horizontal=True, wrap=True, gap="small"):
               help="No recorded full backup, or the last full backup is older than the policy")
     st.metric("Latest backup", format_age_minutes(summary["newest_age"]) +
               (" ago" if summary["newest_age"] is not None and pd.notna(summary["newest_age"]) else ""),
-              border=True, width=W)
+              border=True, width=W + 60)          # "23 h 36 min ago" needs the extra room
 
 # ---------------------------------------------------------------------------
 # Chart: hours since last full/differential, with the policy line
