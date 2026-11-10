@@ -44,7 +44,7 @@ CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300",
 BLUE_RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 
 STATUS_LABEL = {"Healthy": "✅ Healthy", "Warning": "⚠️ Warning", "Critical": "⛔ Critical"}
-CARD_WIDTH = 160          # fixed-width metric cards wrap on narrow screens
+CARD_WIDTH = 168          # fixed-width metric cards wrap on narrow screens
 
 CSS = """
 <style>
@@ -65,7 +65,7 @@ CSS = """
               border-radius:999px; font-weight:600; font-size:.9rem;
               border:1px solid #e1e5eb; background:#ffffff; color:#0b1220;}
   .footnote {color:#7a8494; font-size:.85rem;}
-  [data-testid="stMetricValue"] {font-size: 1.6rem; white-space: nowrap;}
+  [data-testid="stMetricValue"] {font-size: 1.5rem; white-space: nowrap;}
   [data-testid="stMetricLabel"] p {color:#5b6472; font-weight:600;}
 
   /* sidebar (dark navy - colours set in .streamlit/config.toml) */

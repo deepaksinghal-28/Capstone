@@ -24,7 +24,7 @@ borderColor = "#e1e5eb"
 font = "sans-serif"
 baseRadius = "10px"
 buttonRadius = "8px"
-metricValueFontWeight = 700
+metricValueFontWeight = 600
 showSidebarBorder = false
 
 # Dark navy sidebar: brand, chosen server and the menu stand apart from the content.
