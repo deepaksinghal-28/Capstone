@@ -87,7 +87,7 @@ def test_search_primary_after_secondary_switches_server():
     assert at.session_state["selected_server"] == "Primary"
     text = _text(at)
     assert "Showing: Primary" in text and "SQLDEV2" not in text      # main page AND sidebar
-    assert "Server: **Primary**" in " ".join(m.value for m in at.sidebar.markdown)
+    assert "<div class='srv-name'>Primary</div>" in " ".join(m.value for m in at.sidebar.markdown)
 
 
 def test_search_by_real_sql_server_name():
@@ -120,6 +120,8 @@ def test_sidebar_does_not_list_all_servers():
     sidebar_text = " ".join(m.value for m in at.sidebar.markdown)
     assert "Secondary" in sidebar_text and "Primary" not in sidebar_text
     assert len(at.sidebar.selectbox) == 0                      # no all-servers dropdown
+    # the chosen server comes FIRST in the sidebar, the page menu after it
+    assert sidebar_text.index("srv-name") < sidebar_text.index("Live monitoring")
 
 
 # --- Module 1 page ---------------------------------------------------------------------

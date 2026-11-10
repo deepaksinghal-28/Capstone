@@ -48,16 +48,71 @@ CARD_WIDTH = 160          # fixed-width metric cards wrap on narrow screens
 
 CSS = """
 <style>
-  .block-container {padding-top: 2rem;}
-  .app-subtitle {color: #52514e; margin-top: -0.6rem; margin-bottom: 1rem;}
+  .block-container {padding-top: 1.6rem;}
+  /* page header: module label, title, server chip */
+  .page-kicker {display:flex; align-items:center; gap:.45rem; font-size:.74rem; font-weight:700;
+                letter-spacing:.09em; text-transform:uppercase; color:#2a78d6; margin-bottom:-.85rem;}
+  .page-kicker .bar {width:18px; height:3px; border-radius:2px; background:linear-gradient(90deg,#2a78d6,#7cb4ff);}
+  h1 {letter-spacing:-.02em; font-weight:750 !important;}
+  .app-subtitle {display:flex; flex-wrap:wrap; align-items:center; gap:.6rem; color:#5b6472;
+                 margin-top:-.7rem; margin-bottom:1.1rem; font-size:.92rem;}
+  .hdr-chip {display:inline-flex; align-items:center; gap:.45rem; padding:.22rem .7rem; border-radius:999px;
+             background:#ffffff; border:1px solid #e1e5eb; color:#0b1220; font-weight:600; font-size:.85rem;
+             box-shadow:0 1px 2px rgba(16,24,40,.05);}
+  .hdr-chip .muted {color:#7a8494; font-weight:500;}
+  .hdr-dot, .conn-dot {width:.6rem; height:.6rem; border-radius:50%; flex:none;}
   .conn-pill {display:inline-flex; align-items:center; gap:.45rem; padding:.3rem .7rem;
               border-radius:999px; font-weight:600; font-size:.9rem;
-              border:1px solid rgba(11,11,11,.10); background:#fcfcfb; color:#0b0b0b;}
-  .conn-dot {width:.65rem; height:.65rem; border-radius:50%;}
-  .footnote {color:#898781; font-size:.85rem;}
+              border:1px solid #e1e5eb; background:#ffffff; color:#0b1220;}
+  .footnote {color:#7a8494; font-size:.85rem;}
   [data-testid="stMetricValue"] {font-size: 1.6rem; white-space: nowrap;}
+  [data-testid="stMetricLabel"] p {color:#5b6472; font-weight:600;}
+
+  /* sidebar (dark navy - colours set in .streamlit/config.toml) */
+  [data-testid="stSidebarHeader"] {height:auto; min-height:2.4rem; padding-bottom:0;}
+  .brand {display:flex; align-items:center; gap:.7rem; margin:.1rem 0 1.1rem 0;}
+  .brand-icon {width:38px; height:38px; border-radius:11px; flex:none; display:flex; align-items:center;
+               justify-content:center; background:linear-gradient(135deg,#4f9cff 0%,#1d5fd1 100%);
+               box-shadow:0 4px 14px rgba(29,95,209,.45);}
+  .brand-name {font-weight:750; font-size:1.18rem; color:#ffffff; line-height:1.15;}
+  .brand-sub {font-size:.74rem; color:#8fa3bf;}
+  .srv-card {background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.10); border-radius:12px;
+             padding:.75rem .85rem .8rem .85rem;}
+  .srv-label, .nav-label {font-size:.67rem; letter-spacing:.1em; text-transform:uppercase; color:#8fa3bf;
+                          font-weight:700;}
+  .nav-label {margin:.9rem 0 -.2rem .25rem;}
+  .srv-name {font-size:1.12rem; font-weight:700; color:#ffffff; margin:.1rem 0 .3rem 0; overflow-wrap:anywhere;}
+  .srv-conn {display:flex; align-items:center; gap:.45rem; font-size:.8rem; color:#c9d5e6; overflow-wrap:anywhere;}
+  .srv-chips {display:flex; flex-wrap:wrap; gap:.35rem; margin-top:.6rem;}
+  .chip {font-size:.72rem; font-weight:700; padding:.12rem .55rem; border-radius:999px;}
+  .chip-crit {background:rgba(239,68,68,.20); color:#fca5a5;}
+  .chip-warn {background:rgba(245,158,11,.20); color:#fcd34d;}
+  .chip-ok {background:rgba(34,197,94,.18); color:#86efac;}
 </style>
 """
+
+BRAND_HTML = """
+<div class="brand">
+  <div class="brand-icon">
+    <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="#ffffff" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/>
+      <path d="M4 12c0 1.66 3.58 3 8 3s8-1.34 8-3"/></svg>
+  </div>
+  <div><div class="brand-name">DB Monitor</div><div class="brand-sub">SQL Server monitoring &amp; analysis</div></div>
+</div>
+"""
+
+# The label above each page title (module number and area).
+PAGE_KICKER = {
+    "Find a Server": "Start here",
+    "SQL Server Health": "Module 1 · Live monitoring",
+    "Query Performance": "Module 2 · Live monitoring",
+    "Sessions & Blocking": "Module 3 · Live monitoring",
+    "Backup Monitoring": "Module 4 · Live monitoring",
+    "Alerts & DBA Recommendations": "Module 5 · Live monitoring",
+    "Performance History": "Module 6 · Trend analysis",
+}
 
 
 def inject_css() -> None:
@@ -120,14 +175,21 @@ def require_server() -> ServerTarget:
 
 
 def page_header(title: str, show_server: bool = True) -> None:
+    """Module label, page title, and a chip with the server this page is showing."""
+    kicker = PAGE_KICKER.get(title)
+    if kicker:
+        st.markdown(f"<div class='page-kicker'><span class='bar'></span>{html.escape(kicker)}</div>",
+                    unsafe_allow_html=True)
     st.title(title)
-    server_part = ""
+    chip = ""
     t = current_target() if show_server else None
     if t is not None:
-        server_part = (f" · showing <b>{html.escape(t.name)}</b>"
-                       + (f" ({html.escape(t.server)})" if t.server != t.name else ""))
-    st.markdown("<div class='app-subtitle'>Database Server Monitoring and Performance "
-                f"Analysis System{server_part}</div>", unsafe_allow_html=True)
+        colour = STATUS_GOOD if health_of(t.server).connected else STATUS_CRITICAL
+        detail = f" <span class='muted'>· {html.escape(t.server)}</span>" if t.server != t.name else ""
+        chip = (f"<span class='hdr-chip'><span class='hdr-dot' style='background:{colour}'></span>"
+                f"showing <b>{html.escape(t.name)}</b>{detail}</span>")
+    st.markdown(f"<div class='app-subtitle'>{chip}<span>Database Server Monitoring and Performance "
+                "Analysis System</span></div>", unsafe_allow_html=True)
 
 
 def footnote(text: str) -> None:
@@ -346,30 +408,56 @@ def active_alerts(server_name: str | None = None) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Sidebar - shows ONLY the chosen server (no list of all servers)
 # ---------------------------------------------------------------------------
-def render_sidebar_status() -> None:
-    """Chosen server, connection indicator, its alert count, change-server link, refresh."""
+def server_card_html(name: str, server: str, connected: bool, critical: int, warning: int) -> str:
+    """The chosen server at the top of the sidebar: name, connection and alert chips."""
+    dot, state = (("#22c55e", "Connected") if connected else ("#ef4444", "Unreachable"))
+    chips = []
+    if critical:
+        chips.append(f"<span class='chip chip-crit'>⛔ {critical} critical</span>")
+    if warning:
+        chips.append(f"<span class='chip chip-warn'>⚠️ {warning} warning</span>")
+    if not chips:
+        chips.append("<span class='chip chip-ok'>✅ No active alerts</span>")
+    return (f"<div class='srv-card'><div class='srv-label'>Monitoring</div>"
+            f"<div class='srv-name'>{html.escape(name)}</div>"
+            f"<div class='srv-conn'><span class='conn-dot' style='background:{dot}'></span>"
+            f"{state} · {html.escape(server)}</div>"
+            f"<div class='srv-chips'>{''.join(chips)}</div></div>")
+
+
+def render_sidebar(sections: dict[str, list], on_search_page: bool = False) -> None:
+    """Sidebar, top to bottom: brand, the chosen server (status, alerts, change, refresh),
+    then the page menu grouped into sections. Only the chosen server is shown - never a
+    list of all servers. "Change server" is left out on the search page itself."""
     current = get_settings()
     selected = current_target()
     evaluate_alerts()
     with st.sidebar:
+        st.markdown(BRAND_HTML, unsafe_allow_html=True)
         if selected is None:
-            st.markdown("**No server selected**")
-            st.page_link(SEARCH_PAGE, label="Find a server", icon="🔎")
+            st.markdown("<div class='srv-card'><div class='srv-label'>Monitoring</div>"
+                        "<div class='srv-name'>No server selected</div>"
+                        "<div class='srv-conn'>Search for the server you want to look at.</div></div>",
+                        unsafe_allow_html=True)
         else:
             snap = health_of(selected.server)
-            st.markdown(f"Server: **{html.escape(selected.name)}**", unsafe_allow_html=True)
-            st.markdown(connection_pill(snap.connected, selected.server), unsafe_allow_html=True)
             active = active_alerts(selected.name)
             if not active.empty and "is_snoozed" in active:
                 active = active[~active["is_snoozed"]]          # snoozed alerts don't nag
             critical = int((active["severity"] == "Critical").sum()) if not active.empty else 0
-            label = (f"{len(active)} active alert{'s' if len(active) != 1 else ''}"
-                     + (f" · {critical} critical" if critical else ""))
-            st.page_link("views/alerts.py", label=label, icon="🔔" if len(active) else "✅")
-            if len(targets()) > 1:
-                st.page_link(SEARCH_PAGE, label="Change server", icon="🔎")
-        st.write("")
-        if st.button("Refresh now", icon="🔄", type="primary", width="stretch"):
+            warning = int((active["severity"] == "Warning").sum()) if not active.empty else 0
+            st.markdown(server_card_html(selected.name, selected.server, snap.connected, critical, warning),
+                        unsafe_allow_html=True)
+            label = f"{len(active)} active alert{'s' if len(active) != 1 else ''}" if len(active) else "Alerts"
+            st.page_link("views/alerts.py", label=label, icon=":material/notifications_active:")
+            if len(targets()) > 1 and not on_search_page:
+                st.page_link(SEARCH_PAGE, label="Change server", icon=":material/swap_horiz:")
+        if st.button("Refresh now", icon=":material/refresh:", type="primary", width="stretch"):
             st.cache_data.clear()
             st.rerun()
+        for section, pages in sections.items():
+            st.markdown(f"<div class='nav-label'>{html.escape(section)}</div>", unsafe_allow_html=True)
+            for page in pages:
+                st.page_link(page, width="stretch")
+        st.write("")
         st.caption(f"Data is reused for {current.cache_seconds} s between refreshes.")

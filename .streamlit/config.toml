@@ -17,7 +17,20 @@ toolbarMode = "minimal"
 [theme]
 base = "light"
 primaryColor = "#2a78d6"
-backgroundColor = "#f9f9f7"
-secondaryBackgroundColor = "#f0efec"
-textColor = "#0b0b0b"
+backgroundColor = "#f7f8fa"
+secondaryBackgroundColor = "#eef1f5"
+textColor = "#0b1220"
+borderColor = "#e1e5eb"
 font = "sans-serif"
+baseRadius = "10px"
+buttonRadius = "8px"
+metricValueFontWeight = 700
+showSidebarBorder = false
+
+# Dark navy sidebar: brand, chosen server and the menu stand apart from the content.
+[theme.sidebar]
+backgroundColor = "#0f1b2d"
+secondaryBackgroundColor = "#1c2d47"
+textColor = "#dbe4f0"
+primaryColor = "#3b82f6"
+borderColor = "#2a3c58"

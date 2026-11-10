@@ -160,12 +160,12 @@ def show_server_summary(t: ServerTarget) -> None:
 
         st.markdown("**Open for this server**")
         with st.container(horizontal=True, wrap=True, gap="small"):
-            st.page_link("views/health.py", label="Server health", icon="🩺")
-            st.page_link("views/query_performance.py", label="Query performance", icon="⚡")
-            st.page_link("views/sessions_blocking.py", label="Sessions & blocking", icon="🔒")
-            st.page_link("views/backups.py", label="Backups", icon="💾")
-            st.page_link("views/alerts.py", label="Alerts & advice", icon="🔔")
-            st.page_link("views/history.py", label="Performance history", icon="📈")
+            st.page_link("views/health.py", label="Server health", icon=":material/monitor_heart:")
+            st.page_link("views/query_performance.py", label="Query performance", icon=":material/bolt:")
+            st.page_link("views/sessions_blocking.py", label="Sessions & blocking", icon=":material/lock_clock:")
+            st.page_link("views/backups.py", label="Backups", icon=":material/backup:")
+            st.page_link("views/alerts.py", label="Alerts & advice", icon=":material/notifications:")
+            st.page_link("views/history.py", label="Performance history", icon=":material/insights:")
 
 
 all_targets = ui.targets()
