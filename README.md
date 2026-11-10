@@ -10,7 +10,7 @@ project (MIT) - see [LICENSE_ATTRIBUTION.md](LICENSE_ATTRIBUTION.md).
 **[ql-server-monitor-demo.streamlit.app](https://ql-server-monitor-demo.streamlit.app/)** -
 the complete dashboard with **five fictional servers and clearly labelled SAMPLE data**
 (no real SQL Server is connected). It opens on `DEMO-PROD-01`; use the *Demo servers
-to try* buttons or the search box, then the five module pages in the left menu.
+to try* buttons or the search box, then the six module pages in the left menu.
 
 *Hosted free on Streamlit Community Cloud - if it has been idle it may need ~30 s to wake up.*
 
@@ -19,6 +19,7 @@ to try* buttons or the search box, then the five module pages in the left menu.
 | ![Find a server](docs/screenshots/01-find-a-server.jpg) **Find a server** - search first, one server at a time | ![Server health](docs/screenshots/02-server-health.jpg) **1 · Server health** - databases, sizes, log usage |
 | ![Query performance](docs/screenshots/03-query-performance.jpg) **2 · Query performance** - top queries from the plan cache | ![Sessions and blocking](docs/screenshots/04-sessions-blocking.jpg) **3 · Sessions & blocking** - blocking chains to the head blocker |
 | ![Backups](docs/screenshots/05-backups.jpg) **4 · Backups** - last full/diff/log, overdue policy | ![Alerts](docs/screenshots/06-alerts.jpg) **5 · Alerts & advice** - rule-based alerts with DBA steps |
+| ![Performance history](docs/screenshots/07-performance-history.jpg) **6 · Performance history** - trends, busiest hours, growth projection | |
 
 *Screenshots taken from the public demo (sample data).*
 
@@ -29,8 +30,16 @@ SQL Server (DMVs, catalog views, msdb)
         │  read-only SELECTs, Windows Authentication
         ▼
 monitor/db.py  (pyodbc)  →  monitor/collectors.py  →  app.py (Streamlit + Plotly)
-                                                        http://dbmonitor.localhost
+        │                                               http://dbmonitor.localhost
+        │                                                 ▲  (6 · Performance history
+        ▼                                                 │      reads history.db only)
+tools/collect_history.py  - every 5 min: snapshot of every server + alert rules
+        └──►  %USERPROFILE%\CapstoneMonitor\history.db  (SQLite, kept 30 days)
 ```
+
+The live pages (modules 1-5) query SQL Server when they are opened. The **history
+collector** runs in the background (started by `run_app.ps1`), so trends and alerts
+keep being recorded even while nobody has the dashboard open.
 
 ## Feature status
 
@@ -42,6 +51,7 @@ monitor/db.py  (pyodbc)  →  monitor/collectors.py  →  app.py (Streamlit + Pl
 | 4 | Backup monitoring (`msdb.dbo.backupset`) | **Implemented · 77 tests passing · verified with real CapstoneDemo full/diff/log backups + RESTORE VERIFYONLY on 2026-11-09** |
 | 5 | Alerts & DBA recommendations | **Implemented · 92 tests passing · live de-duplication verified (2 alerts, 3 checks, no duplicates) on 2026-11-09** |
 | + | Multi-instance monitoring (search-first "Find a server", one server at a time, alerts per server) | **Implemented · 110 tests passing against both instances on 2026-11-09** |
+| 6 | Performance history & trend analysis (health score, CPU, busiest hours, blocking incidents, database growth + 30-day projection, log use) and **long blocking: who blocked which query** (sessions blocked ≥ 5 min, checked every minute, both statements saved) | **Implemented · 22 tests (TC-HIS-01…06) · collector verified on both instances on 2026-11-10** |
 
 ## Public demo (sample data only)
 
@@ -95,7 +105,10 @@ clear error without affecting the others.
 | `views/sessions_blocking.py` | Module 3 page - sessions, blocking chains, waits (never kills sessions) |
 | `views/backups.py` | Module 4 page - last full/diff/log per database, overdue rules, backup history |
 | `views/alerts.py` | Module 5 page - active / resolved alerts with DBA investigation steps |
+| `views/history.py` | Module 6 page - trends over 24 h / 7 / 14 / 30 days (reads history.db only) |
 | `monitor/alerts.py` | Alert rules, runbook text, de-duplicating alert store (SQLite) |
+| `monitor/history.py` | Module 6 - history store (SQLite), the collector cycle, trend analysis functions |
+| `tools/collect_history.py` | The history collector: a snapshot of every server every 5 min (`--once` for Task Scheduler) |
 | `tools/blocking_demo.py` | Self-releasing 3-session blocking demo (A → B → C, always ROLLBACK) |
 | `monitor/ui.py` | Shared colours, chart style, cached loaders, sidebar |
 | `sql/demo/` | Primary: `01_create_capstone_demo.sql`, `02_create_blocking_demo_table.sql`, `03_backup_capstone_demo.sql`, `04_backup_capstone_log.sql`, `99_drop_capstone_demo.sql` · Secondary (refuse to run elsewhere): `05_create_sqldev2_salesarchive.sql`, `06_backup_sqldev2.sql`, `99_drop_sqldev2_salesarchive.sql` |
@@ -130,6 +143,21 @@ clear error without affecting the others.
 ```
 
 Open **http://dbmonitor.localhost** in Edge or Chrome. Stop with **Ctrl+C**.
+
+`run_app.ps1` also starts the **history collector** in the background (and stops it
+with the dashboard). It saves a snapshot of every server every 5 minutes into
+`%USERPROFILE%\CapstoneMonitor\history.db` and logs to `collector.log` in the same
+folder. Every minute it also checks for blocking: a session blocked for **5 minutes
+or longer** (`BLOCKING_DETAIL_SECONDS`) is saved with the blocked statement and the
+head blocker - login, host, program, status and its last statement - and listed under
+*Long blocking - who blocked which query*. To show it live, hold a block for 7 minutes
+(needs the CapstoneDemo database online): `tools\blocking_demo.py --seconds 420`. The *6 · Performance history* page fills up from there: the first points
+appear at once (CPU is back-filled up to 4 hours from SQL Server's own ring buffer),
+and weekly patterns need a few days. To collect without the dashboard:
+
+```powershell
+& "$env:USERPROFILE\venvs\capstone\Scripts\python.exe" tools\collect_history.py
+```
 
 The dashboard listens on port 80 of this PC only (loopback - not reachable from
 other computers). Edge and Chrome send every `*.localhost` name to this PC by

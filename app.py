@@ -26,6 +26,7 @@ pages = [
     st.Page("views/sessions_blocking.py", title="3 · Sessions & blocking", icon="🔒"),
     st.Page("views/backups.py", title="4 · Backups", icon="💾"),
     st.Page("views/alerts.py", title="5 · Alerts & advice", icon="🔔"),
+    st.Page("views/history.py", title="6 · Performance history", icon="📈"),
 ]
 
 with st.sidebar:

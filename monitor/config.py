@@ -78,6 +78,13 @@ class Settings:
     alert_history_days: int = 7          # resolved alerts are kept this long
     alert_store_path: str = ""           # SQLite file; empty = %USERPROFILE%\CapstoneMonitor\alerts.db
 
+    # --- Performance history (Module 6) -------------------------------------------
+    history_interval_seconds: int = 300  # the collector saves one snapshot per server this often
+    history_retention_days: int = 30     # older snapshots are deleted
+    history_store_path: str = ""         # SQLite file; empty = %USERPROFILE%\CapstoneMonitor\history.db
+    blocking_detail_seconds: int = 300   # a session blocked this long -> both queries + the blocker are saved
+    blocking_check_seconds: int = 60     # how often the collector checks for such blocking
+
     # --- Monitored servers (multi-instance) --------------------------------------
     servers: tuple["ServerTarget", ...] = ()   # from SQL_SERVERS; empty = just SQL_SERVER
 
@@ -247,6 +254,11 @@ def get_settings() -> Settings:
         memory_window_minutes=_env_int("ALERT_MEMORY_WINDOW_MINUTES", defaults.memory_window_minutes),
         alert_history_days=_env_int("ALERT_HISTORY_DAYS", defaults.alert_history_days),
         alert_store_path=_env_str("ALERT_STORE_PATH", defaults.alert_store_path),
+        history_interval_seconds=_env_int("HISTORY_INTERVAL_SECONDS", defaults.history_interval_seconds),
+        history_retention_days=_env_int("HISTORY_RETENTION_DAYS", defaults.history_retention_days),
+        history_store_path=_env_str("HISTORY_STORE_PATH", defaults.history_store_path),
+        blocking_detail_seconds=_env_int("BLOCKING_DETAIL_SECONDS", defaults.blocking_detail_seconds),
+        blocking_check_seconds=_env_int("BLOCKING_CHECK_SECONDS", defaults.blocking_check_seconds),
         servers=parse_servers(os.getenv("SQL_SERVERS", "")),
         demo_mode=_demo_mode(_env_str("SQL_ODBC_DRIVER", defaults.driver)),
     )

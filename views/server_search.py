@@ -165,6 +165,7 @@ def show_server_summary(t: ServerTarget) -> None:
             st.page_link("views/sessions_blocking.py", label="Sessions & blocking", icon="🔒")
             st.page_link("views/backups.py", label="Backups", icon="💾")
             st.page_link("views/alerts.py", label="Alerts & advice", icon="🔔")
+            st.page_link("views/history.py", label="Performance history", icon="📈")
 
 
 all_targets = ui.targets()

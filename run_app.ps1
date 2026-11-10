@@ -7,6 +7,9 @@
         .\run_app.ps1
     Then open http://dbmonitor.localhost in Edge or Chrome. Press Ctrl+C to stop.
 
+    It also starts the performance-history collector (tools\collect_history.py) in
+    the background, and stops it again when the dashboard stops.
+
     The dashboard listens on this PC only (loopback, port 80) - it is not
     reachable from other computers. Port and address: .streamlit\config.toml
 #>
@@ -34,10 +37,35 @@ if (Get-NetTCPConnection -LocalPort 80 -State Listen -ErrorAction SilentlyContin
     exit 1
 }
 
+# Performance-history collector (Module 6): a snapshot of every server every 5 minutes,
+# in the background. Its output goes to %USERPROFILE%\CapstoneMonitor\collector.log.
+$collector = $null
+$running = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like '*collect_history.py*' }
+if ($running) {
+    Write-Host "History collector already running (process $(@($running)[0].ProcessId))." -ForegroundColor DarkGray
+} else {
+    $logDir = Join-Path $env:USERPROFILE 'CapstoneMonitor'
+    New-Item -ItemType Directory -Force -Path $logDir | Out-Null
+    $collector = Start-Process -FilePath $python -ArgumentList 'tools\collect_history.py' `
+        -WorkingDirectory $PSScriptRoot -NoNewWindow -PassThru `
+        -RedirectStandardOutput (Join-Path $logDir 'collector.log') `
+        -RedirectStandardError (Join-Path $logDir 'collector-errors.log')
+    Write-Host "History collector started (process $($collector.Id)) - log: $logDir\collector.log" -ForegroundColor DarkGray
+}
+
 Write-Host 'Starting dashboard at http://dbmonitor.localhost  (Ctrl+C to stop)' -ForegroundColor Cyan
-# Port 80 on the loopback address only (not reachable from other computers).
-# Edge / Chrome resolve every *.localhost name to this PC by themselves, so
-# http://dbmonitor.localhost works without DNS, hosts-file or admin changes.
-& $python -m streamlit run app.py `
-    --server.address localhost --server.port 80 `
-    --browser.serverAddress dbmonitor.localhost --browser.serverPort 80
+try {
+    # Port 80 on the loopback address only (not reachable from other computers).
+    # Edge / Chrome resolve every *.localhost name to this PC by themselves, so
+    # http://dbmonitor.localhost works without DNS, hosts-file or admin changes.
+    & $python -m streamlit run app.py `
+        --server.address localhost --server.port 80 `
+        --browser.serverAddress dbmonitor.localhost --browser.serverPort 80
+} finally {
+    # Stop the collector this script started (one started elsewhere keeps running).
+    if ($collector -and -not $collector.HasExited) {
+        Stop-Process -Id $collector.Id -ErrorAction SilentlyContinue
+        Write-Host 'History collector stopped.' -ForegroundColor DarkGray
+    }
+}

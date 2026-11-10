@@ -37,6 +37,11 @@ STATUS_GOOD, STATUS_WARNING, STATUS_CRITICAL = "#0ca30c", "#fab219", "#d03b3b"
 INK, INK_2, MUTED = "#0b0b0b", "#52514e", "#898781"
 GRID, AXIS, SURFACE = "#e1e0d9", "#c3c2b7", "#fcfcfb"
 FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif'
+# Categorical slots in FIXED order (validated for colour-blind separation of neighbours);
+# a series keeps its colour when others are filtered out.
+CATEGORICAL = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+# Sequential single-hue ramp (light = low, dark = high) for heatmaps.
+BLUE_RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 
 STATUS_LABEL = {"Healthy": "✅ Healthy", "Warning": "⚠️ Warning", "Critical": "⛔ Critical"}
 CARD_WIDTH = 160          # fixed-width metric cards wrap on narrow screens
@@ -248,6 +253,25 @@ def load_cpu(server: str, demo: bool = False):
 
 def cpu_of(server: str):
     return load_cpu(server, demo_mode())
+
+
+@st.cache_data(ttl=60, show_spinner="Reading performance history…")
+def load_history(name: str, server: str, demo: bool = False):
+    """Module 6: the stored snapshots of one server (generated sample history in demo mode).
+    Reads history.db only - SQL Server is not contacted."""
+    from monitor.history import History, HistoryStore, default_history_path
+    if demo:
+        from monitor import demo_data
+        return demo_data.history(server, name)
+    s = get_settings()
+    path = default_history_path(s)
+    if not path.exists():
+        return History.empty_history(s.history_interval_seconds)
+    return HistoryStore(path).load(name, interval_seconds=s.history_interval_seconds)
+
+
+def history_of(t: ServerTarget):
+    return load_history(t.name, t.server, demo_mode())
 
 
 # The pages call these; the demo flag is part of the cache key, so real and
