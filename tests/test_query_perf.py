@@ -9,7 +9,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from monitor.collectors import QUERY_METRICS, collect_query_stats, prepare_query_stats, rank_queries
+from monitor.collectors import (ALL_DATABASES, QUERY_METRICS, collect_query_stats, database_filter_options,
+                                prepare_query_stats, rank_queries)
 from monitor.db import MONITOR_MARKER, run_query
 from tools.run_sql_script import split_batches
 
@@ -60,6 +61,18 @@ def test_rank_queries_filters():
     assert list(rank_queries(df, "cpu", 10, database="CapstoneDemo")["query_hash"]) == ["0x2", "0x1"]
     assert list(rank_queries(df, "cpu", 10, search="heavy")["query_hash"]) == ["0x2"]
     assert len(rank_queries(df, "cpu", top_n=1)) == 1
+
+
+def test_database_filter_lists_server_databases_even_without_cached_queries():
+    queries = prepare_query_stats(_raw())          # CapstoneDemo, master and "(system)" (no database)
+    server_dbs = pd.DataFrame({"database_name": ["master", "tempdb", "model", "msdb", "CapstoneDemo",
+                                                 "SalesArchive", None]})
+    options = database_filter_options(queries, server_dbs)
+    assert options[0] == ALL_DATABASES
+    assert options[1:] == ["(system)", "CapstoneDemo", "master", "model", "msdb", "SalesArchive", "tempdb"]
+    # without the server list (server unreachable) the cached databases are still offered
+    assert database_filter_options(queries, None) == [ALL_DATABASES, "(system)", "CapstoneDemo", "master"]
+    assert database_filter_options(pd.DataFrame(), pd.DataFrame()) == [ALL_DATABASES]
 
 
 def test_rank_queries_rejects_unknown_metric():

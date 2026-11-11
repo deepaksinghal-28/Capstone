@@ -184,6 +184,20 @@ def rank_queries(df: pd.DataFrame, metric: str, top_n: int,
     return out
 
 
+ALL_DATABASES = "All databases"
+
+
+def database_filter_options(queries: pd.DataFrame, databases: pd.DataFrame | None = None) -> list[str]:
+    """Choices for the Query Performance "Database" filter: every database on the server (the
+    Module 1 list) plus any database seen in the plan cache. A database with no cached queries can
+    still be chosen - the page then says why it shows nothing, instead of leaving it out."""
+    names: set[str] = set()
+    for frame in (databases, queries):
+        if frame is not None and not frame.empty and "database_name" in frame:
+            names.update(frame["database_name"].dropna().astype(str))
+    return [ALL_DATABASES] + sorted(names, key=str.lower)
+
+
 def collect_query_stats(metric: str = "cpu", fetch_rows: int = 100,
                         settings: Settings | None = None) -> QueryPerfSnapshot:
     """Collect top query shapes from the plan cache. Never raises."""

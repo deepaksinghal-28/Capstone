@@ -12,7 +12,7 @@ import pandas as pd
 import streamlit as st
 
 from monitor import ui
-from monitor.collectors import QUERY_METRICS, rank_queries
+from monitor.collectors import ALL_DATABASES, QUERY_METRICS, database_filter_options, rank_queries
 
 ui.page_header("Query Performance")
 target = ui.require_server()
@@ -32,9 +32,12 @@ if not snap.connected:
     st.stop()
 
 all_queries = snap.queries
-db_options = ["All databases"] + (sorted(all_queries["database_name"].unique().tolist())
-                                  if not all_queries.empty else [])
-database = c3.selectbox("Database", db_options, key="qp_db")
+# Every database on the server is offered, not only those that happen to be in the plan cache
+health = ui.health_of(target.server)
+db_options = database_filter_options(all_queries, health.databases if health.connected else None)
+database = c3.selectbox("Database", db_options, key="qp_db",
+                        help="Every database on this server. One with no recently run queries shows "
+                             "nothing until queries run against it.")
 search = c4.text_input("Search query text", placeholder="e.g. Orders, usp_…")
 hide_monitor = st.toggle("Hide this dashboard's own monitoring queries", value=True,
                          help="Every query sent by this app starts with /* DBMonitor */ "
@@ -57,17 +60,27 @@ st.info(
     icon="ℹ️",
 )
 
-ranked = rank_queries(all_queries, metric, top_n, hide_monitor=hide_monitor,
-                      database=None if database == "All databases" else database,
+one_db = None if database == ALL_DATABASES else database
+ranked = rank_queries(all_queries, metric, top_n, hide_monitor=hide_monitor, database=one_db,
                       search=search)
 
 if ranked.empty:
-    st.info(
-        "No queries match the current filters. On a quiet server the plan cache holds "
-        "only system activity: run the demo workload "
-        "(`tools\\generate_query_workload.py`) to create measurable query activity.",
-        icon="🔎",
-    )
+    db_rows = (all_queries[all_queries["database_name"] == one_db]
+               if one_db and not all_queries.empty else all_queries)
+    if one_db and db_rows.empty:
+        since = (f"since {pd.Timestamp(oldest):%Y-%m-%d %H:%M} (server clock)"
+                 if oldest is not None and not pd.isna(oldest) else "at the moment")
+        message = (f"**{one_db}** has no queries in the plan cache {since}. The plan cache only "
+                   f"holds queries that ran recently, so this list fills once queries run against "
+                   f"{one_db}; then click **Refresh now**.")
+    elif one_db and hide_monitor and "is_monitor_query" in db_rows and (db_rows["is_monitor_query"] == 1).all():
+        message = (f"The only cached queries for **{one_db}** are this dashboard's own monitoring "
+                   "queries. Switch off *Hide this dashboard's own monitoring queries* to see them.")
+    else:
+        message = ("No queries match the current filters. On a quiet server the plan cache holds "
+                   "only system activity: run the demo workload "
+                   "(`tools\\generate_query_workload.py`) to create measurable query activity.")
+    st.info(message, icon="🔎")
     st.stop()
 
 # ---------------------------------------------------------------------------

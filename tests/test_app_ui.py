@@ -202,6 +202,18 @@ def test_query_performance_rank_by_every_metric():
         assert not at.exception, (option, at.exception)
 
 
+def test_query_database_filter_lists_every_database_on_the_server():
+    """The filter offers every database (not only those in the plan cache); choosing one shows its
+    queries or says why there are none."""
+    at = _run_app("views/query_performance.py", server="Secondary")
+    options = at.selectbox(key="qp_db").options
+    assert {"master", "model", "msdb", "tempdb", "SalesArchive"} <= set(options)
+    for name in options[1:]:
+        at.selectbox(key="qp_db").select(name).run()
+        assert not at.exception, (name, at.exception)
+        assert len(at.dataframe) == 1 or any(name in i.value for i in at.info), name
+
+
 def test_sessions_page_renders():
     at = _run_app("views/sessions_blocking.py")
     assert at.title[0].value == "Sessions & Blocking"
